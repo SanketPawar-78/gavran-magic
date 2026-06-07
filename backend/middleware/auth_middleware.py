@@ -4,6 +4,7 @@ from flask import request, jsonify
 import jwt
 from config import Config
 from extensions import get_db
+from bson import ObjectId
 
 def token_required(f):
     @wraps(f)
@@ -24,7 +25,11 @@ def token_required(f):
             if data.get('role') == 'admin':
                 current_user = {'role': 'admin', 'user_id': 'admin'}
             else:
-                current_user = db.users.find_one({'_id': data.get('user_id')})
+                user_id_str = data.get('user_id')
+                current_user = None
+                if user_id_str:
+                    current_user = db.users.find_one({'_id': ObjectId(user_id_str)})
+                
                 if not current_user:
                     return jsonify({'message': 'User not found!'}), 401
                 current_user['_id'] = str(current_user['_id'])
