@@ -3090,7 +3090,7 @@ body {
     /* Product Detail Mobile Fixes */
     .product-main-content {
         grid-template-columns: 1fr;
-        gap: 40px;
+        gap: 30px;
     }
 
     .product-visuals {
@@ -3099,20 +3099,46 @@ body {
 
     .image-stage {
         height: 350px;
-        padding: 20px;
+        padding: 15px;
+    }
+
+    .thumbnails-reel {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        justify-content: flex-start;
+    }
+
+    .thumbnails-reel::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .thumbnails-reel::-webkit-scrollbar-thumb {
+        background-color: #ddd;
+        border-radius: 4px;
     }
 
     .detail-card h1.name {
-        font-size: 2.2rem;
+        font-size: 1.8rem;
     }
 
     .current-price {
-        font-size: 2.2rem;
+        font-size: 2rem;
     }
 
     .price-box {
-        margin: 25px 0;
+        margin: 20px 0;
         gap: 12px;
+        padding: 15px;
+    }
+
+    .order-controls {
+        padding: 15px;
+        margin-top: 20px;
+    }
+
+    .spec-item {
+        padding: 15px;
     }
 
     .feedback-grid {
