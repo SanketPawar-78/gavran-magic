@@ -1,4 +1,4 @@
-# Gavran Magic - Deployment Guide (Free Tier)
+﻿# Gavran Magic - Deployment Guide (Free Tier)
 
 This guide will help you deploy your full-stack application for free using **Render** (Backend), **MongoDB Atlas** (Database), and **GitHub Pages** (Frontend).
 
@@ -62,7 +62,7 @@ Now we connect the frontend to the live backend.
     npm run deploy
     ```
     *(This command builds the project and uploads it to GitHub Pages)*.
-5.  Your frontend will be live at: `https://sanketpawarr68-jpg.github.io/gavran-magic/`
+5.  Your frontend will be live at: `https://SanketPawar-78.github.io/gavran-magic/`
 
 ---
 
@@ -70,3 +70,4 @@ Now we connect the frontend to the live backend.
 
 -   **CORS Issues**: If the frontend cannot talk to the backend, ensure your backend allows the frontend URL.
 -   **White Screen on Frontend**: Check the console (F12) for errors. Ensure the `base` path in `vite.config.js` matches your repository name (`/gavran-magic/`).
+

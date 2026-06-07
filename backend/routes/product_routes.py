@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import get_db
 from bson import ObjectId
+from middleware.auth_middleware import admin_required, token_required
 
 product_bp = Blueprint('product_bp', __name__)
 
@@ -59,7 +60,8 @@ def get_reviews(id):
     return jsonify(reviews), 200
 
 @product_bp.route('/<id>/reviews', methods=['POST'])
-def add_review(id):
+@token_required
+def add_review(current_user, id):
     db = get_db()
     data = request.json
     review = {
@@ -78,7 +80,8 @@ def add_review(id):
 
 # Admin Routes
 @product_bp.route('/', methods=['POST'])
-def add_product():
+@admin_required
+def add_product(current_admin):
     db = get_db()
     data = request.json
     db.products.insert_one(data)
@@ -86,7 +89,8 @@ def add_product():
 
 
 @product_bp.route('/<id>', methods=['PUT'])
-def update_product(id):
+@admin_required
+def update_product(current_admin, id):
     db = get_db()
     data = request.json
     # MongoDB update requires $set if we only want to update specific fields
@@ -95,7 +99,8 @@ def update_product(id):
 
 
 @product_bp.route('/<id>', methods=['DELETE'])
-def delete_product(id):
+@admin_required
+def delete_product(current_admin, id):
     db = get_db()
     db.products.delete_one({'_id': ObjectId(id)})
     return jsonify({'message': 'Product deleted'}), 200

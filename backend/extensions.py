@@ -1,5 +1,7 @@
 from pymongo import MongoClient
 import os
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 _client = None
 _db = None
@@ -28,3 +30,8 @@ def get_db():
     if _db is None:
         connect_db()
     return _db
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)

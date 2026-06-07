@@ -7,3 +7,5 @@ python-dotenv
 dnspython
 gunicorn
 razorpay
+Flask-Limiter
+Flask-Talisman

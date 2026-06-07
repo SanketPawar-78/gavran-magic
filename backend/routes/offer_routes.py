@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from extensions import get_db
 from bson import ObjectId
 from datetime import datetime
+from middleware.auth_middleware import admin_required
 
 offer_bp = Blueprint('offer_bp', __name__)
 
@@ -79,7 +80,8 @@ def get_offers():
     return jsonify(offers), 200
 
 @offer_bp.route('/', methods=['POST'])
-def add_offer():
+@admin_required
+def add_offer(current_admin):
     db = get_db()
     data = request.json
     if 'code' in data:
@@ -89,7 +91,8 @@ def add_offer():
     return jsonify({'message': 'Offer created successfully'}), 201
 
 @offer_bp.route('/<id>', methods=['PUT'])
-def update_offer(id):
+@admin_required
+def update_offer(current_admin, id):
     db = get_db()
     data = request.json
     if '_id' in data:
@@ -100,7 +103,8 @@ def update_offer(id):
     return jsonify({'message': 'Offer updated successfully'}), 200
 
 @offer_bp.route('/<id>', methods=['DELETE'])
-def delete_offer(id):
+@admin_required
+def delete_offer(current_admin, id):
     db = get_db()
     db.offers.delete_one({'_id': ObjectId(id)})
     return jsonify({'message': 'Offer deleted successfully'}), 200

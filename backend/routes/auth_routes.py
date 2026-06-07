@@ -6,6 +6,8 @@ from flask import Blueprint, request, jsonify
 from extensions import get_db
 from config import Config
 import jwt
+from middleware.auth_middleware import admin_required, token_required
+from extensions import limiter
 
 auth_bp = Blueprint('auth_bp', __name__)
 
@@ -105,6 +107,7 @@ def send_order_confirmation_sms(phone, order_short_id, total_amount):
 
 
 @auth_bp.route('/send-otp', methods=['POST'])
+@limiter.limit("5 per minute; 20 per hour")
 def send_otp():
     try:
         data = request.json
@@ -153,6 +156,7 @@ def send_otp():
 
 
 @auth_bp.route('/verify-otp', methods=['POST'])
+@limiter.limit("10 per minute")
 def verify_otp():
     try:
         data = request.json
@@ -252,9 +256,12 @@ def firebase_login():
     return verify_otp()
 
 @auth_bp.route('/update-profile', methods=['POST'])
-def update_profile():
+@token_required
+def update_profile(current_user):
     data = request.json
     phone = data.get('phone')
+    if current_user['role'] != 'admin' and current_user['phone'] != phone:
+        return jsonify({'message': 'Unauthorized to update this profile'}), 403
     if not phone:
         return jsonify({'message': 'Phone number is required'}), 400
 
@@ -297,6 +304,7 @@ def update_profile():
 
 # ADMIN: Dashboard Login
 @auth_bp.route('/admin/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def admin_login():
     data = request.json
     username = data.get('username')
@@ -304,6 +312,9 @@ def admin_login():
 
     env_username = os.getenv('ADMIN_USERNAME', 'admin')
     env_password = os.getenv('ADMIN_PASSWORD', 'admin123')
+    
+    if env_password == 'admin123' and os.getenv('FLASK_ENV') == 'production':
+        print("WARNING: Default admin password used in production!")
 
     if username == env_username and password == env_password:
         # Issue a special admin token
@@ -323,7 +334,8 @@ def admin_login():
 
 # ADMIN: Get all users with order stats
 @auth_bp.route('/users', methods=['GET'])
-def get_all_users():
+@admin_required
+def get_all_users(current_admin):
     db = get_db()
     users_cursor = db.users.find().sort('created_at', -1)
     users = []

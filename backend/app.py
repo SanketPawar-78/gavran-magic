@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
-from extensions import connect_db
+from flask_talisman import Talisman
+from extensions import connect_db, limiter
 
 # Import Blueprints
 from routes.auth_routes import auth_bp
@@ -10,7 +11,20 @@ from routes.settings_routes import settings_bp
 from routes.offer_routes import offer_bp
 
 app = Flask(__name__)
-CORS(app)
+
+# Strict CORS: Allow frontend domains
+allowed_origins = [
+    "http://localhost:5173", 
+    "http://localhost:3000", 
+    "https://gavran-magic.vercel.app"
+]
+CORS(app, origins=allowed_origins)
+
+# Rate Limiting
+limiter.init_app(app)
+
+# Security Headers
+Talisman(app, force_https=False) # Keep False for local dev, ensure True on production (Vercel/Render do this mostly anyway)
 
 # Connect to MongoDB on first request (lazy load)
 # Removed explicit connect_db() call to speed up Render startup

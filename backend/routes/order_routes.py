@@ -5,9 +5,13 @@ from bson import ObjectId
 import datetime
 import razorpay
 import os
+from middleware.auth_middleware import admin_required, token_required
 
 order_bp = Blueprint('order_bp', __name__)
-shiprocket = ShiprocketAPI()
+
+def get_shiprocket():
+    """Always return a fresh ShiprocketAPI instance so new .env credentials are picked up."""
+    return ShiprocketAPI()
 
 # Initialize Razorpay
 client = None
@@ -79,9 +83,9 @@ def get_shipping_cost():
         }), 200
 
     # Pickup location: Shrigonda (413701)
-    pickup_pincode = "413701" 
-    
-    shipping_details = shiprocket.get_shipping_rate(pickup_pincode, pincode, weight, cod=cod)
+    pickup_pincode = "413701"
+
+    shipping_details = get_shiprocket().get_shipping_rate(pickup_pincode, pincode, weight, cod=cod)
     return jsonify(shipping_details), 200
 
 # Maharashtra Pincode Validation
@@ -119,7 +123,8 @@ def check_eligibility():
     }), 200
 
 @order_bp.route('/razorpay/create', methods=['POST'])
-def create_razorpay_order():
+@token_required
+def create_razorpay_order(current_user):
     """Step 1: Create a formal Razorpay Order for the payment modal."""
     if not client:
         return jsonify({'message': 'Razorpay not configured on server'}), 500
@@ -143,7 +148,8 @@ def create_razorpay_order():
         return jsonify({'message': str(e)}), 400
 
 @order_bp.route('/', methods=['POST'])
-def create_order():
+@token_required
+def create_order(current_user):
     data = request.json
     required_fields = ['user_id', 'products', 'total_price', 'address', 'city', 'pincode', 'phone', 'name']
     for field in required_fields:
@@ -154,34 +160,18 @@ def create_order():
     if not is_maharashtra_pincode(pincode):
          return jsonify({'message': 'Delivery available only in Maharashtra (Pincode 400xxx-44xxxx)'}), 400
 
-    # Check Shiprocket Serviceability
-    # Factory location: Shrigonda (413701)
-    pickup_pincode = "413701" 
-    serviceability = shiprocket.check_serviceability(pickup_pincode, pincode)
-    
-    # Analyze serviceability response (mock logic if API fails or returns specific structure)
-    # Real Shiprocket response has 'data' -> 'available_courier_companies'
-    is_serviceable = False
-    if serviceability and 'data' in serviceability and 'available_courier_companies' in serviceability['data']:
-         if len(serviceability['data']['available_courier_companies']) > 0:
-             is_serviceable = True
-    
-    # If API fails (e.g. invalid credentials), we might want to fallback or block.
-    # For this project, if serviceability check fails but pincode is MH, we might warn or block.
-    # I'll log it but maybe proceed for demo if strict check is not critical, 
-    # BUT user insisted on "Validate pincode -> Call Shiprocket API -> Show error if delivery not available".
-    # So I must enforce it.
-    
-    # For demo purposes, if Shiprocket credentials are not set or auth fails,
-    # we allow the order to proceed as long as the pincode is valid Maharashtra.
+    # Check Shiprocket Serviceability (Pickup: Shrigonda 413701)
+    pickup_pincode = "413701"
+    serviceability = get_shiprocket().check_serviceability(pickup_pincode, pincode)
+
+    is_serviceable = (
+        serviceability
+        and 'data' in serviceability
+        and len(serviceability['data'].get('available_courier_companies', [])) > 0
+    )
+
     if not is_serviceable:
-        if serviceability and serviceability.get('message') == 'Authentication failed':
-            print("Shiprocket Auth Failed - Allowing order as pincode is MH (demo mode)")
-            # Allow through for demo
-        else:
-            print(f"Serviceability check result: {serviceability}")
-            # Allow through for demo - in production, uncomment the line below:
-            # return jsonify({'message': 'Service not available for this pincode'}), 400
+        print(f"[Order] Serviceability fallback for pincode {pincode}: {serviceability.get('status', 'unknown')}, allowing through (MH pincode validated)")
 
     # Promo Code Validation
     db = get_db()
@@ -272,13 +262,10 @@ def create_order():
         "created_at": datetime.datetime.utcnow(),
         "promo_code": data.get('promo_code', ''),
         "tracking_id": "PENDING"
-    }
+    }   
     
     order_id = db.orders.insert_one(order).inserted_id
-
-    # For now, we set tracking_id to PENDING as admin will push to Shiprocket manually
     tracking_id = "PENDING"
-    get_db().orders.update_one({'_id': order_id}, {'$set': {'tracking_id': tracking_id}})
 
     # Send Order Confirmation SMS
     try:
@@ -298,7 +285,8 @@ def create_order():
     return jsonify({'message': 'Order placed successfully', 'order_id': str(order_id), 'tracking_id': tracking_id}), 201
 
 @order_bp.route('/<order_id>', methods=['GET'])
-def get_order(order_id):
+@token_required
+def get_order(current_user, order_id):
     try:
         order = get_db().orders.find_one({'_id': ObjectId(order_id)})
         if order:
@@ -310,7 +298,8 @@ def get_order(order_id):
         return jsonify({'message': 'Invalid Order ID format'}), 400
     
 @order_bp.route('/<order_id>/cancel', methods=['POST'])
-def cancel_order(order_id):
+@token_required
+def cancel_order(current_user, order_id):
     try:
         data = request.json
         cancellation_reason = data.get('reason', 'Not specified')
@@ -359,7 +348,10 @@ def cancel_order(order_id):
         return jsonify({'message': 'Failed to cancel order'}), 500
 
 @order_bp.route('/user/<user_id>', methods=['GET'])
-def get_user_orders(user_id):
+@token_required
+def get_user_orders(current_user, user_id):
+    if current_user['role'] != 'admin' and current_user['user_id'] != user_id:
+        return jsonify({'message': 'Unauthorized'}), 403
     orders_cursor = get_db().orders.find({'user_id': user_id}).sort('created_at', -1)
     orders = []
     for order in orders_cursor:
@@ -369,7 +361,8 @@ def get_user_orders(user_id):
 
 # ADMIN: Push order to Shiprocket
 @order_bp.route('/<order_id>/ship', methods=['POST'])
-def ship_order(order_id):
+@admin_required
+def ship_order(current_admin, order_id):
     try:
         db = get_db()
         order = db.orders.find_one({'_id': ObjectId(order_id)})
@@ -396,47 +389,62 @@ def ship_order(order_id):
                 "hsn": ""
             })
             
+        full_name = str(order.get('name', 'Customer'))
+        name_parts = full_name.strip().split(' ', 1)
+        first_name = name_parts[0] if name_parts else 'Customer'
+        last_name = name_parts[1] if len(name_parts) > 1 else 'Customer'
+
+        # Map payment method to Shiprocket accepted values
+        payment_method_map = {'COD': 'COD', 'Prepaid': 'Prepaid', 'Online': 'Prepaid'}
+        payment_method = payment_method_map.get(order.get('payment_method', 'COD'), 'COD')
+
         sr_order_payload = {
             "order_id": str(order['_id']),
             "order_date": order['created_at'].strftime("%Y-%m-%d %H:%M"),
             "pickup_location": pickup_location,
-            "billing_customer_name": order['name'],
-            "billing_last_name": "",
+            "billing_customer_name": first_name,
+            "billing_last_name": last_name,
             "billing_address": order['address'],
             "billing_city": order['city'],
-            "billing_pincode": order['pincode'],
+            "billing_pincode": str(order['pincode']),
             "billing_state": "Maharashtra",
             "billing_country": "India",
-            "billing_email": order.get("email", "customer@example.com"),
-            "billing_phone": order['phone'],
+            "billing_email": order.get('email', 'customer@gavranmagic.com'),
+            "billing_phone": str(order['phone']),
             "shipping_is_billing": True,
             "order_items": sr_order_items,
-            "payment_method": "COD", # Map this based on actual payment if needed
-            "sub_total": order['total_price'],
-            "length": length, "breadth": breadth, "height": height, "weight": weight 
+            "payment_method": payment_method,
+            "sub_total": float(order['total_price']),
+            "length": length,
+            "breadth": breadth,
+            "height": height,
+            "weight": weight
         }
 
-        sr_response = shiprocket.create_order(sr_order_payload)
-        
-        if sr_response and 'status_code' in sr_response and sr_response['status_code'] == 1:
-            tracking_id = sr_response.get('order_id', order_id)
+        sr_response = get_shiprocket().create_order(sr_order_payload)
+
+        # Shiprocket returns status_code=1 on success
+        if sr_response and sr_response.get('status_code') == 1:
+            sr_order_id = sr_response.get('order_id', '')
             shipment_id = sr_response.get('shipment_id', '')
-            
+
             db.orders.update_one(
-                {'_id': ObjectId(order_id)}, 
+                {'_id': ObjectId(order_id)},
                 {'$set': {
                     'order_status': 'Shipped',
-                    'tracking_id': str(tracking_id),
+                    'tracking_id': str(sr_order_id),
                     'shipment_id': str(shipment_id)
                 }}
             )
             return jsonify({
-                'message': 'Successfully pushed to Shiprocket',
-                'shiprocket_order_id': tracking_id,
+                'message': 'Successfully pushed to Shiprocket! 🚀',
+                'shiprocket_order_id': sr_order_id,
                 'shiprocket_shipment_id': shipment_id
             }), 200
         else:
-            error_msg = sr_response.get('message', 'Failed to create order in Shiprocket')
+            # Log full response for debugging
+            error_msg = sr_response.get('message', 'Unknown error from Shiprocket')
+            print(f"[Shiprocket] Order push FAILED: {sr_response}")
             return jsonify({'message': error_msg, 'details': sr_response}), 400
             
     except Exception as e:
@@ -445,7 +453,8 @@ def ship_order(order_id):
 
 # ADMIN: Get all orders
 @order_bp.route('/', methods=['GET'])
-def get_all_orders():
+@admin_required
+def get_all_orders(current_admin):
     # In production, check for admin token
     orders_cursor = get_db().orders.find().sort('created_at', -1)
     orders = []
@@ -456,7 +465,8 @@ def get_all_orders():
 
 # ADMIN: Update order status & metadata
 @order_bp.route('/<order_id>/status', methods=['PUT'])
-def update_order_status(order_id):
+@admin_required
+def update_order_status(current_admin, order_id):
     try:
         data = request.json
         new_status = data.get('status')
@@ -502,7 +512,8 @@ def update_order_status(order_id):
 
 # ADMIN: Delete an order
 @order_bp.route('/<order_id>', methods=['DELETE'])
-def delete_order(order_id):
+@admin_required
+def delete_order(current_admin, order_id):
     try:
         db = get_db()
         result = db.orders.delete_one({'_id': ObjectId(order_id)})
@@ -516,7 +527,8 @@ def delete_order(order_id):
 
 # ADMIN: Get business analytics
 @order_bp.route('/analytics/report', methods=['GET'])
-def get_analytics():
+@admin_required
+def get_analytics(current_admin):
     try:
         db = get_db()
         # 1. Daily Sales for last 7 days
