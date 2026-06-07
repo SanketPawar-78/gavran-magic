@@ -12,11 +12,14 @@ from routes.offer_routes import offer_bp
 
 app = Flask(__name__)
 
-# Strict CORS: Allow frontend domains
+# Strict CORS: Allow frontend domains and Electron app origins
 allowed_origins = [
     "http://localhost:5173", 
     "http://localhost:3000", 
-    "https://gavran-magic.vercel.app"
+    "http://localhost:5174", # Admin App Dev
+    "https://gavran-magic.vercel.app",
+    "file://",               # Packaged Admin App
+    "null"                   # Packaged Admin App (Alternative)
 ]
 CORS(app, origins=allowed_origins)
 
