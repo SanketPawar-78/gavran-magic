@@ -1279,8 +1279,8 @@ body {
 
     /* === PRODUCTS GRID === */
     .products-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
         padding: 10px 0;
     }
 
@@ -1399,14 +1399,14 @@ body {
 /* === SMALL PHONES (≤420px) — 1 column layout === */
 @media (max-width: 420px) {
     .products-grid {
-        grid-template-columns: repeat(2, 1fr);
-        /* Ensure 2 columns even on very small phones */
-        gap: 8px;
+        grid-template-columns: 1fr;
+        /* Use 1 column on very small phones to prevent broken cards */
+        gap: 15px;
     }
 
     .product-img-wrapper {
-        height: 140px;
-        /* Compact height for smaller phones */
+        height: 200px;
+        /* Taller height for 1 column layout */
     }
 
     .product-info h3 {
